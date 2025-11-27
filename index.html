@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Seasonal Token Stats Analyzer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -988,7 +988,19 @@
                 <div class="section-content active">
                     <div class="section-inner">
                         <div class="chart-controls">
+                            <button class="btn active" data-view="tokens">Tokens Bought</button>
+                            <button class="btn" data-view="pol">POL Spent</button>
+                        </div>
+                        <div class="chart-controls" style="margin-top: 10px;">
+                            <button class="btn active" data-period="all">All Buys</button>
+                            <button class="btn" data-period="daily">Daily</button>
+                            <button class="btn" data-period="weekly">Weekly</button>
+                            <button class="btn" data-period="monthly">Monthly</button>
+                            <button class="btn" data-period="yearly">Yearly</button>
+                        </div>
+                        <div class="chart-controls" style="margin-top: 10px;">
                             <button class="btn active" data-filter="all">All Seasons</button>
+                            <button class="btn" data-filter="total">Total</button>
                             <button class="btn" data-filter="spring">🌸 Spring</button>
                             <button class="btn" data-filter="summer">☀️ Summer</button>
                             <button class="btn" data-filter="autumn">🍂 Autumn</button>
@@ -1046,6 +1058,30 @@
     </div>
     
     <script>
+        // Check if Chart.js loaded properly
+        window.addEventListener('load', function() {
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js failed to load from CDN');
+                // Try alternative CDN as fallback
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js';
+                script.onload = function() {
+                    console.log('Chart.js loaded from fallback CDN');
+                    // Load adapter after Chart.js
+                    const adapterScript = document.createElement('script');
+                    adapterScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js';
+                    document.head.appendChild(adapterScript);
+                };
+                script.onerror = function() {
+                    console.error('Both CDN sources failed to load Chart.js');
+                    alert('Warning: Chart library could not be loaded. The chart feature will not work. Please check your internet connection.');
+                };
+                document.head.appendChild(script);
+            } else {
+                console.log('Chart.js loaded successfully');
+            }
+        });
+        
         // Create seasonal particles
         function createParticles() {
             const particles = document.getElementById('particles');
@@ -1086,6 +1122,8 @@
         
         let chart = null;
         let currentFilter = 'all';
+        let currentView = 'tokens'; // 'tokens' or 'pol'
+        let currentPeriod = 'all'; // 'all', 'daily', 'weekly', 'monthly', 'yearly'
         let disclaimerAccepted = false;
         let pendingFileEvent = null;
         
@@ -1108,11 +1146,26 @@
             handleFileUpload(e);
         });
         
+        // Handle chart control buttons (season filter, view type, period)
         document.querySelectorAll('.chart-controls .btn').forEach(btn => {
             btn.addEventListener('click', function() {
-                document.querySelectorAll('.chart-controls .btn').forEach(b => b.classList.remove('active'));
+                // Determine which control group this button belongs to
+                const controlGroup = this.closest('.chart-controls');
+                const buttonsInGroup = controlGroup.querySelectorAll('.btn');
+                
+                // Remove active class from buttons in the same group
+                buttonsInGroup.forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                currentFilter = this.dataset.filter;
+                
+                // Update the appropriate variable
+                if (this.dataset.filter) {
+                    currentFilter = this.dataset.filter;
+                } else if (this.dataset.view) {
+                    currentView = this.dataset.view;
+                } else if (this.dataset.period) {
+                    currentPeriod = this.dataset.period;
+                }
+                
                 updateChart();
             });
         });
@@ -1139,7 +1192,22 @@
                 document.getElementById('dateFilterContainer').style.display = 'flex';
                 
                 displayStats();
-                createChart();
+                
+                // Wait a bit to ensure Chart.js is fully loaded, then create chart
+                setTimeout(function() {
+                    if (typeof Chart !== 'undefined') {
+                        createChart();
+                    } else {
+                        console.error('Chart.js still not loaded, retrying...');
+                        setTimeout(function() {
+                            if (typeof Chart !== 'undefined') {
+                                createChart();
+                            } else {
+                                alert('Error: Chart library is not available. Please refresh the page.');
+                            }
+                        }, 1000);
+                    }
+                }, 100);
             }, 500);
         }
         
@@ -1239,16 +1307,32 @@
                         if (bought > 0) {
                             transactionData.spring.bought += bought;
                             if (timestamp) {
+                                // Try to find POL spent for this purchase (look for recent spend)
+                                let polSpent = null;
+                                for (let i = transactionData.rawTransactions.length - 1; i >= 0 && i >= transactionData.rawTransactions.length - 5; i--) {
+                                    const trans = transactionData.rawTransactions[i];
+                                    if (trans.type === 'spend' && trans.timestamp) {
+                                        const timeDiff = Math.abs(timestamp - trans.timestamp);
+                                        // If spend happened within 5 seconds of token purchase
+                                        if (timeDiff <= 5000) {
+                                            polSpent = trans.amount;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
                                 transactionData.timeline.push({
                                     timestamp,
                                     season: 'spring',
-                                    amount: bought
+                                    amount: bought,
+                                    polSpent: polSpent
                                 });
                                 transactionData.rawTransactions.push({
                                     type: 'token_purchase',
                                     timestamp: timestamp,
                                     amount: bought,
-                                    season: 'spring'
+                                    season: 'spring',
+                                    polSpent: polSpent
                                 });
                             }
                         }
@@ -1268,16 +1352,31 @@
                         if (bought > 0) {
                             transactionData.summer.bought += bought;
                             if (timestamp) {
+                                // Try to find POL spent for this purchase
+                                let polSpent = null;
+                                for (let i = transactionData.rawTransactions.length - 1; i >= 0 && i >= transactionData.rawTransactions.length - 5; i--) {
+                                    const trans = transactionData.rawTransactions[i];
+                                    if (trans.type === 'spend' && trans.timestamp) {
+                                        const timeDiff = Math.abs(timestamp - trans.timestamp);
+                                        if (timeDiff <= 5000) {
+                                            polSpent = trans.amount;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
                                 transactionData.timeline.push({
                                     timestamp,
                                     season: 'summer',
-                                    amount: bought
+                                    amount: bought,
+                                    polSpent: polSpent
                                 });
                                 transactionData.rawTransactions.push({
                                     type: 'token_purchase',
                                     timestamp: timestamp,
                                     amount: bought,
-                                    season: 'summer'
+                                    season: 'summer',
+                                    polSpent: polSpent
                                 });
                             }
                         }
@@ -1297,16 +1396,31 @@
                         if (bought > 0) {
                             transactionData.autumn.bought += bought;
                             if (timestamp) {
+                                // Try to find POL spent for this purchase
+                                let polSpent = null;
+                                for (let i = transactionData.rawTransactions.length - 1; i >= 0 && i >= transactionData.rawTransactions.length - 5; i--) {
+                                    const trans = transactionData.rawTransactions[i];
+                                    if (trans.type === 'spend' && trans.timestamp) {
+                                        const timeDiff = Math.abs(timestamp - trans.timestamp);
+                                        if (timeDiff <= 5000) {
+                                            polSpent = trans.amount;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
                                 transactionData.timeline.push({
                                     timestamp,
                                     season: 'autumn',
-                                    amount: bought
+                                    amount: bought,
+                                    polSpent: polSpent
                                 });
                                 transactionData.rawTransactions.push({
                                     type: 'token_purchase',
                                     timestamp: timestamp,
                                     amount: bought,
-                                    season: 'autumn'
+                                    season: 'autumn',
+                                    polSpent: polSpent
                                 });
                             }
                         }
@@ -1326,16 +1440,31 @@
                         if (bought > 0) {
                             transactionData.winter.bought += bought;
                             if (timestamp) {
+                                // Try to find POL spent for this purchase
+                                let polSpent = null;
+                                for (let i = transactionData.rawTransactions.length - 1; i >= 0 && i >= transactionData.rawTransactions.length - 5; i--) {
+                                    const trans = transactionData.rawTransactions[i];
+                                    if (trans.type === 'spend' && trans.timestamp) {
+                                        const timeDiff = Math.abs(timestamp - trans.timestamp);
+                                        if (timeDiff <= 5000) {
+                                            polSpent = trans.amount;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
                                 transactionData.timeline.push({
                                     timestamp,
                                     season: 'winter',
-                                    amount: bought
+                                    amount: bought,
+                                    polSpent: polSpent
                                 });
                                 transactionData.rawTransactions.push({
                                     type: 'token_purchase',
                                     timestamp: timestamp,
                                     amount: bought,
-                                    season: 'winter'
+                                    season: 'winter',
+                                    polSpent: polSpent
                                 });
                             }
                         }
@@ -1531,7 +1660,8 @@
                     filteredData.timeline.push({
                         timestamp: trans.timestamp,
                         season: trans.season,
-                        amount: trans.amount
+                        amount: trans.amount,
+                        polSpent: trans.polSpent || null
                     });
                 } else if (trans.type === 'tip') {
                     filteredData.tips.push({
@@ -1674,103 +1804,357 @@
         }
         
         function createChart() {
-            const ctx = document.getElementById('spendingChart').getContext('2d');
+            // Check if Chart.js is loaded
+            if (typeof Chart === 'undefined') {
+                console.error('Chart.js is not loaded. Please check your internet connection or CDN link.');
+                alert('Error: Chart.js library failed to load. Please refresh the page and check your internet connection.');
+                return;
+            }
+            
+            const ctx = document.getElementById('spendingChart');
+            if (!ctx) {
+                console.error('Chart canvas element not found');
+                return;
+            }
+            
+            const ctx2d = ctx.getContext('2d');
+            if (!ctx2d) {
+                console.error('Could not get 2D context from canvas');
+                return;
+            }
             
             if (chart) {
                 chart.destroy();
             }
             
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    datasets: []
-                },
-                options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-        x: {
-            type: 'time',
-            time: {
-                unit: 'day',
-                tooltipFormat: 'MMM dd, yyyy',
-                displayFormats: {
-                    day: 'MMM dd'
+            try {
+                // Check if time scale is available (from adapter)
+                let xAxisConfig;
+                try {
+                    // Try to use time scale if adapter is loaded
+                    xAxisConfig = {
+                        type: 'time',
+                        time: {
+                            parser: false, // Use the timestamp directly
+                            unit: 'day',
+                            tooltipFormat: 'MMM dd, yyyy',
+                            displayFormats: {
+                                day: 'MMM dd, yyyy',
+                                week: 'MMM dd, yyyy',
+                                month: 'MMM yyyy'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        },
+                        ticks: {
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    };
+                } catch (e) {
+                    // Fallback to linear scale if time adapter not available
+                    console.warn('Time scale adapter not available, using linear scale');
+                    xAxisConfig = {
+                        type: 'linear',
+                        title: {
+                            display: true,
+                            text: 'Date Index'
+                        },
+                        ticks: {
+                            callback: function(value, index, ticks) {
+                                // This will be populated with actual dates in updateChart
+                                return '';
+                            }
+                        }
+                    };
                 }
-            },
-            title: {
-                display: true,
-                text: 'Date'
-            }
-        },
-        y: {
-            title: {
-                display: true,
-                text: 'Tokens Bought'
-            },
-            beginAtZero: true
-        }
-    },
-    plugins: {
-        legend: {
-            display: true,
-            position: 'top'
-        },
-        tooltip: {
-            mode: 'index',
-            intersect: false,
-            callbacks: {
-                title: function(context) {
-                    if (context[0] && context[0].raw && context[0].raw.x) {
-                        return new Date(context[0].raw.x).toLocaleDateString();
+                
+                chart = new Chart(ctx2d, {
+                    type: 'line',
+                    data: {
+                        datasets: []
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        scales: {
+                            x: xAxisConfig,
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Tokens Bought' // Will be updated dynamically
+                                },
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 2
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    title: function(context) {
+                                        if (context[0] && context[0].raw && context[0].raw.x) {
+                                            const date = new Date(context[0].raw.x);
+                                            // Format based on period
+                                            if (currentPeriod === 'yearly') {
+                                                return date.getFullYear().toString();
+                                            } else if (currentPeriod === 'monthly') {
+                                                return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                                            } else if (currentPeriod === 'weekly') {
+                                                const weekStart = new Date(date);
+                                                weekStart.setDate(date.getDate() - date.getDay());
+                                                const weekEnd = new Date(weekStart);
+                                                weekEnd.setDate(weekStart.getDate() + 6);
+                                                return weekStart.toLocaleDateString() + ' - ' + weekEnd.toLocaleDateString();
+                                            } else if (currentPeriod === 'daily') {
+                                                return date.toLocaleDateString();
+                                            } else {
+                                                return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                                            }
+                                        }
+                                        return '';
+                                    },
+                                    label: function(context) {
+                                        const value = context.parsed.y.toFixed(currentView === 'pol' ? 4 : 2);
+                                        const unit = currentView === 'pol' ? ' POL' : ' tokens';
+                                        return context.dataset.label + ': ' + value + unit;
+                                    }
+                                }
+                            }
+                        }
                     }
-                    return '';
-                }
+                });
+                
+                updateChart();
+            } catch (error) {
+                console.error('Error creating chart:', error);
+                alert('Error creating chart: ' + error.message + '\n\nIf this persists, try refreshing the page.');
             }
         }
-    }
-}
+        
+        // Helper function to get period key for aggregation
+        function getPeriodKey(timestamp, period) {
+            const date = new Date(timestamp);
+            switch(period) {
+                case 'daily':
+                    return date.toISOString().split('T')[0]; // YYYY-MM-DD
+                case 'weekly':
+                    const weekStart = new Date(date);
+                    weekStart.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
+                    return weekStart.toISOString().split('T')[0];
+                case 'monthly':
+                    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0'); // YYYY-MM
+                case 'yearly':
+                    return String(date.getFullYear()); // YYYY
+                default:
+                    return null; // 'all' - no aggregation
+            }
+        }
+        
+        // Helper function to aggregate timeline data by period
+        function aggregateTimelineData(timeline, period, viewType, seasonFilter) {
+            // Filter by season first
+            let filteredTimeline = timeline;
+            if (seasonFilter && seasonFilter !== 'all') {
+                filteredTimeline = timeline.filter(t => t.season === seasonFilter);
+            }
+            
+            if (period === 'all') {
+                // Return individual transactions
+                return filteredTimeline
+                    .filter(t => t.timestamp)
+                    .map(t => ({
+                        x: new Date(t.timestamp).getTime(),
+                        y: viewType === 'pol' ? (parseFloat(t.polSpent) || 0) : (parseFloat(t.amount) || 0),
+                        originalData: t
+                    }));
+            }
+            
+            // Aggregate by period
+            const aggregated = {};
+            
+            filteredTimeline
+                .filter(t => t.timestamp)
+                .forEach(t => {
+                    const periodKey = getPeriodKey(t.timestamp, period);
+                    const timestamp = new Date(t.timestamp).getTime();
+                    
+                    if (!aggregated[periodKey]) {
+                        aggregated[periodKey] = {
+                            periodKey: periodKey,
+                            timestamp: timestamp,
+                            tokens: 0,
+                            pol: 0
+                        };
+                    }
+                    
+                    aggregated[periodKey].tokens += parseFloat(t.amount) || 0;
+                    aggregated[periodKey].pol += parseFloat(t.polSpent) || 0;
+                });
+            
+            // Convert aggregated data to chart format
+            const result = [];
+            Object.keys(aggregated).forEach(periodKey => {
+                const agg = aggregated[periodKey];
+                result.push({
+                    x: agg.timestamp,
+                    y: viewType === 'pol' ? agg.pol : agg.tokens
+                });
             });
             
-            updateChart();
+            // Sort by timestamp
+            result.sort((a, b) => a.x - b.x);
+            return result;
         }
         
         function updateChart() {
-            if (!chart) return;
+            if (!chart) {
+                console.warn('Chart not initialized, attempting to create...');
+                createChart();
+                return;
+            }
+            
+            if (!transactionData || !transactionData.timeline) {
+                console.warn('No timeline data available');
+                return;
+            }
+            
+            // Update Y-axis label based on view type
+            const yAxisTitle = currentView === 'pol' ? 'POL Spent' : 'Tokens Bought';
+            chart.options.scales.y.title.text = yAxisTitle;
+            
+            // Update time scale unit based on period
+            if (chart.options.scales.x.type === 'time' && chart.options.scales.x.time) {
+                switch(currentPeriod) {
+                    case 'daily':
+                        chart.options.scales.x.time.unit = 'day';
+                        break;
+                    case 'weekly':
+                        chart.options.scales.x.time.unit = 'week';
+                        break;
+                    case 'monthly':
+                        chart.options.scales.x.time.unit = 'month';
+                        break;
+                    case 'yearly':
+                        chart.options.scales.x.time.unit = 'year';
+                        break;
+                    default:
+                        chart.options.scales.x.time.unit = 'day';
+                }
+            }
             
             const datasets = [];
             
             const seasons = {
-                spring: { color: '#4ade80', label: 'Spring' },
-                summer: { color: '#fbbf24', label: 'Summer' },
-                autumn: { color: '#fb923c', label: 'Autumn' },
-                winter: { color: '#60a5fa', label: 'Winter' }
+                spring: { color: '#4ade80', label: '🌸 Spring' },
+                summer: { color: '#fbbf24', label: '☀️ Summer' },
+                autumn: { color: '#fb923c', label: '🍂 Autumn' },
+                winter: { color: '#60a5fa', label: '❄️ Winter' }
             };
             
-            const seasonsToShow = currentFilter === 'all' ? Object.keys(seasons) : [currentFilter];
-            
-            seasonsToShow.forEach(season => {
-                const seasonData = transactionData.timeline
-                    .filter(t => t.season === season)
-                    .map(t => ({
-                        x: t.timestamp,
-                        y: t.amount
-                    }));
+            // Handle "total" filter - show combined total of all seasons
+            if (currentFilter === 'total') {
+                const totalData = aggregateTimelineData(
+                    transactionData.timeline,
+                    currentPeriod,
+                    currentView,
+                    'all' // 'all' means combine all seasons
+                );
                 
-                if (seasonData.length > 0) {
+                if (totalData.length > 0) {
                     datasets.push({
-                        label: seasons[season].label,
-                        data: seasonData,
-                        borderColor: seasons[season].color,
-                        backgroundColor: seasons[season].color + '33',
+                        label: 'Total',
+                        data: totalData,
+                        borderColor: '#667eea',
+                        backgroundColor: '#667eea33',
                         tension: 0.1,
-                        fill: false
+                        fill: false,
+                        pointRadius: currentPeriod === 'all' ? 4 : 5,
+                        pointHoverRadius: 6,
+                        borderWidth: 3
                     });
                 }
-            });
+            } else {
+                // Show individual seasons
+                const seasonsToShow = currentFilter === 'all' ? Object.keys(seasons) : [currentFilter];
+                
+                seasonsToShow.forEach(season => {
+                    const seasonData = aggregateTimelineData(
+                        transactionData.timeline,
+                        currentPeriod,
+                        currentView,
+                        season
+                    );
+                    
+                    if (seasonData.length > 0) {
+                        datasets.push({
+                            label: seasons[season].label,
+                            data: seasonData,
+                            borderColor: seasons[season].color,
+                            backgroundColor: seasons[season].color + '33',
+                            tension: 0.1,
+                            fill: false,
+                            pointRadius: currentPeriod === 'all' ? 3 : 4,
+                            pointHoverRadius: 5
+                        });
+                    }
+                });
+                
+                // If showing all seasons and aggregated period, also show total line
+                if (currentFilter === 'all' && currentPeriod !== 'all') {
+                    const totalData = aggregateTimelineData(
+                        transactionData.timeline,
+                        currentPeriod,
+                        currentView,
+                        'all' // Special value to indicate all seasons combined
+                    );
+                    
+                    if (totalData.length > 0) {
+                        datasets.unshift({
+                            label: 'Total',
+                            data: totalData,
+                            borderColor: '#667eea',
+                            backgroundColor: '#667eea33',
+                            tension: 0.1,
+                            fill: false,
+                            pointRadius: 4,
+                            pointHoverRadius: 5,
+                            borderWidth: 2
+                        });
+                    }
+                }
+            }
             
-            chart.data.datasets = datasets;
-            chart.update();
+            if (datasets.length === 0) {
+                console.warn('No data to display in chart');
+                chart.data.datasets = [{
+                    label: 'No data',
+                    data: [],
+                    borderColor: '#999',
+                    backgroundColor: '#99933'
+                }];
+            } else {
+                chart.data.datasets = datasets;
+            }
+            
+            try {
+                chart.update('none');
+            } catch (error) {
+                console.error('Error updating chart:', error);
+            }
         }
 
         function resetApp() {
@@ -1855,11 +2239,11 @@ function toggleVisibility(id) {
                 },
                 'walletAddress': {
                     title: 'Linked Wallet Address',
-                    text: 'The cryptocurrency wallet address that is linked to your Discord account for the DCA bot. This is where your MATIC/POL deposits and withdrawals are processed.'
+                    text: 'The cryptocurrency wallet address that is linked to your Discord account for the DCA bot. This is where your MATIC/POL withdrawals are processed to.'
                 },
                 'dailySpend': {
                     title: 'Daily Spend Setting',
-                    text: 'The amount of MATIC/POL you have configured the DCA bot to spend each day on purchasing seasonal tokens. This is your automated daily investment amount.'
+                    text: 'The amount of MATIC/POL you have configured the DCA bot to spend each day on purchasing seasonal tokens. This is your currently automated daily investment amount.'
                 },
                 'totalDeposited': {
                     title: 'Total Deposited',
@@ -1875,19 +2259,19 @@ function toggleVisibility(id) {
                 },
                 'springTokens': {
                     title: 'Spring Tokens',
-                    text: 'Your total Spring token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Spring tokens are part of the seasonal token cycle.'
+                    text: 'Your total Spring token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Spring tokens are part of the seasonal token cycle. The token contract adress on polygon is 0x70d59baA5ab360b2723dD561415bdBcD4435E1C4'
                 },
                 'summerTokens': {
                     title: 'Summer Tokens',
-                    text: 'Your total Summer token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Summer tokens are part of the seasonal token cycle.'
+                    text: 'Your total Summer token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Summer tokens are part of the seasonal token cycle. The token contract adress on polygon is 0xdd28ec6b06983d01D37DbD9Ab581d8d884d95264'
                 },
                 'autumnTokens': {
                     title: 'Autumn Tokens',
-                    text: 'Your total Autumn token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Autumn tokens are part of the seasonal token cycle.'
+                    text: 'Your total Autumn token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Autumn tokens are part of the seasonal token cycle. The token contract adress on polygon is 0xfbA4d30e964E40775C95B58AcF6b5A621b929c0a'
                 },
                 'winterTokens': {
                     title: 'Winter Tokens',
-                    text: 'Your total Winter token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Winter tokens are part of the seasonal token cycle.'
+                    text: 'Your total Winter token holdings, including both tokens purchased through the DCA bot and any bonus tokens you\'ve received. Winter tokens are part of the seasonal token cycle. The token contract adress on polygon is 0x51540D15957bDC0fdb87d32616c8d658D59f77C6'
                 }
             };
             
