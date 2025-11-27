@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Stats Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .upload-section {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .file-label {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+        
+        .file-label:hover {
+            transform: scale(1.05);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stat-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+            word-break: break-all;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .chart-section {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+        }
+        
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            background: #e0e0e0;
+            color: #333;
+        }
+        
+        .btn:hover {
+            background: #d0d0d0;
+        }
+        
+        .btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .season-spring { color: #4ade80; }
+        .season-summer { color: #fbbf24; }
+        .season-autumn { color: #fb923c; }
+        .season-winter { color: #60a5fa; }
+        
+        #results {
+            display: none;
+        }
+        
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.2em;
+            margin: 20px 0;
+        }
+        
+        .address-text {
+            font-size: 1.2em;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Transaction Stats Analyzer</h1>
+        
+        <div class="upload-section">
+            <div class="file-input-wrapper">
+                <input type="file" id="fileInput" accept=".txt">
+                <label for="fileInput" class="file-label">Choose TXT File</label>
+            </div>
+            <p style="margin-top: 15px; color: #666;">Upload your transaction log file to generate statistics</p>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">Processing file...</div>
+        
+        <div id="results">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>👤 User Info</h3>
+                    <div class="stat-value" id="discordId" style="font-size: 1.3em;">-</div>
+                    <div class="stat-label">Discord ID</div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>💼 Wallet Address</h3>
+                    <div class="stat-value address-text" id="walletAddress" style="font-size: 0.8em;">-</div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>💰 Total POL Deposited</h3>
+                    <div class="stat-value" id="totalDeposited">0</div>
+                    <div class="stat-label">MATIC/POL</div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>💸 Total POL Spent</h3>
+                    <div class="stat-value" id="totalSpent">0</div>
+                    <div class="stat-label">MATIC/POL</div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>🌸 Spring Tokens</h3>
+                    <div class="stat-value season-spring" id="springTotal">0</div>
+                    <div class="stat-label">Total Bought + Bonus: <span id="springBonus">0</span></div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>☀️ Summer Tokens</h3>
+                    <div class="stat-value season-summer" id="summerTotal">0</div>
+                    <div class="stat-label">Total Bought + Bonus: <span id="summerBonus">0</span></div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>🍂 Autumn Tokens</h3>
+                    <div class="stat-value season-autumn" id="autumnTotal">0</div>
+                    <div class="stat-label">Total Bought + Bonus: <span id="autumnBonus">0</span></div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>❄️ Winter Tokens</h3>
+                    <div class="stat-value season-winter" id="winterTotal">0</div>
+                    <div class="stat-label">Total Bought + Bonus: <span id="winterBonus">0</span></div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>📤 Total Withdrawn</h3>
+                    <div class="stat-value" id="totalWithdrawn">0</div>
+                    <div class="stat-label">MATIC/POL</div>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>⚙️ Daily Spend</h3>
+                    <div class="stat-value" id="dailySpend">-</div>
+                    <div class="stat-label">Current Setting</div>
+                </div>
+            </div>
+            
+            <div class="chart-section">
+                <h2 style="margin-bottom: 20px; color: #667eea;">📈 Spending Timeline</h2>
+                <div class="chart-controls">
+                    <button class="btn active" data-filter="all">All Seasons</button>
+                    <button class="btn" data-filter="spring">Spring</button>
+                    <button class="btn" data-filter="summer">Summer</button>
+                    <button class="btn" data-filter="autumn">Autumn</button>
+                    <button class="btn" data-filter="winter">Winter</button>
+                </div>
+                <canvas id="spendingChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let transactionData = {
+            discordId: null,
+            walletAddress: null,
+            associatedAddress: null,
+            totalDeposited: 0,
+            totalSpent: 0,
+            totalWithdrawn: 0,
+            spring: { bought: 0, bonus: 0 },
+            summer: { bought: 0, bonus: 0 },
+            autumn: { bought: 0, bonus: 0 },
+            winter: { bought: 0, bonus: 0 },
+            dailySpend: null,
+            timeline: []
+        };
+        
+        let chart = null;
+        let currentFilter = 'all';
+        
+        document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+        
+        document.querySelectorAll('.chart-controls .btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.chart-controls .btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentFilter = this.dataset.filter;
+                updateChart();
+            });
+        });
+        
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            const text = await file.text();
+            parseTransactions(text);
+            
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+            
+            displayStats();
+            createChart();
+        }
+        
+        function parseTransactions(text) {
+            const lines = text.split('\n');
+            
+            transactionData = {
+                discordId: null,
+                walletAddress: null,
+                associatedAddress: null,
+                totalDeposited: 0,
+                totalSpent: 0,
+                totalWithdrawn: 0,
+                spring: { bought: 0, bonus: 0 },
+                summer: { bought: 0, bonus: 0 },
+                autumn: { bought: 0, bonus: 0 },
+                winter: { bought: 0, bonus: 0 },
+                dailySpend: null,
+                timeline: []
+            };
+            
+            let previousBalances = {
+                matic: null,
+                spring: null,
+                summer: null,
+                autumn: null,
+                winter: null
+            };
+            
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                
+                const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+                const timestamp = timestampMatch ? new Date(timestampMatch[1]) : null;
+                
+                // Extract Discord ID
+                const discordMatch = line.match(/user (\d+)/);
+                if (discordMatch && !transactionData.discordId) {
+                    transactionData.discordId = discordMatch[1];
+                }
+                
+                // Receiving address
+                if (line.includes('Receiving address set')) {
+                    const addressMatch = line.match(/0x[a-fA-F0-9]{40}/);
+                    if (addressMatch) {
+                        transactionData.walletAddress = addressMatch[0];
+                    }
+                }
+                
+                // Associated address
+                if (line.includes('Associated address')) {
+                    const addressMatch = line.match(/Associated address (0x[a-fA-F0-9]{40})/);
+                    if (addressMatch) {
+                        transactionData.associatedAddress = addressMatch[1];
+                    }
+                }
+                
+                // MATIC balance updates (deposits/withdrawals/spends)
+                if (line.includes('Updated MATIC balance') || line.includes('Updated POL balance')) {
+                    const fromMatch = line.match(/from ([\d.]+) to ([\d.]+)/);
+                    if (fromMatch) {
+                        const fromBalance = parseFloat(fromMatch[1]);
+                        const toBalance = parseFloat(fromMatch[2]);
+                        const difference = toBalance - fromBalance;
+                        
+                        if (difference > 0) {
+                            transactionData.totalDeposited += difference;
+                        } else if (difference < 0) {
+                            const spent = Math.abs(difference);
+                            transactionData.totalSpent += spent;
+                        }
+                        
+                        previousBalances.matic = toBalance;
+                    }
+                }
+                
+                // Spring balance updates
+                if (line.includes('Updated spring balance')) {
+                    const fromMatch = line.match(/from ([\d.]+) to ([\d.]+)/);
+                    if (fromMatch) {
+                        const fromBalance = parseFloat(fromMatch[1]);
+                        const toBalance = parseFloat(fromMatch[2]);
+                        const bought = toBalance - fromBalance;
+                        
+                        if (bought > 0) {
+                            transactionData.spring.bought += bought;
+                            transactionData.timeline.push({
+                                timestamp,
+                                season: 'spring',
+                                amount: bought
+                            });
+                        }
+                        
+                        previousBalances.spring = toBalance;
+                    }
+                }
+                
+                // Summer balance updates
+                if (line.includes('Updated summer balance')) {
+                    const fromMatch = line.match(/from ([\d.]+) to ([\d.]+)/);
+                    if (fromMatch) {
+                        const fromBalance = parseFloat(fromMatch[1]);
+                        const toBalance = parseFloat(fromMatch[2]);
+                        const bought = toBalance - fromBalance;
+                        
+                        if (bought > 0) {
+                            transactionData.summer.bought += bought;
+                            transactionData.timeline.push({
+                                timestamp,
+                                season: 'summer',
+                                amount: bought
+                            });
+                        }
+                        
+                        previousBalances.summer = toBalance;
+                    }
+                }
+                
+                // Autumn balance updates
+                if (line.includes('Updated autumn balance')) {
+                    const fromMatch = line.match(/from ([\d.]+) to ([\d.]+)/);
+                    if (fromMatch) {
+                        const fromBalance = parseFloat(fromMatch[1]);
+                        const toBalance = parseFloat(fromMatch[2]);
+                        const bought = toBalance - fromBalance;
+                        
+                        if (bought > 0) {
+                            transactionData.autumn.bought += bought;
+                            transactionData.timeline.push({
+                                timestamp,
+                                season: 'autumn',
+                                amount: bought
+                            });
+                        }
+                        
+                        previousBalances.autumn = toBalance;
+                    }
+                }
+                
+                // Winter balance updates
+                if (line.includes('Updated winter balance')) {
+                    const fromMatch = line.match(/from ([\d.]+) to ([\d.]+)/);
+                    if (fromMatch) {
+                        const fromBalance = parseFloat(fromMatch[1]);
+                        const toBalance = parseFloat(fromMatch[2]);
+                        const bought = toBalance - fromBalance;
+                        
+                        if (bought > 0) {
+                            transactionData.winter.bought += bought;
+                            transactionData.timeline.push({
+                                timestamp,
+                                season: 'winter',
+                                amount: bought
+                            });
+                        }
+                        
+                        previousBalances.winter = toBalance;
+                    }
+                }
+                
+                // Bonuses
+                if (line.includes('Bonus of') && line.includes('spring')) {
+                    const bonusMatch = line.match(/Bonus of ([\d.]+) spring/);
+                    if (bonusMatch) {
+                        transactionData.spring.bonus += parseFloat(bonusMatch[1]);
+                    }
+                }
+                
+                if (line.includes('Bonus of') && line.includes('summer')) {
+                    const bonusMatch = line.match(/Bonus of ([\d.]+) summer/);
+                    if (bonusMatch) {
+                        transactionData.summer.bonus += parseFloat(bonusMatch[1]);
+                    }
+                }
+                
+                if (line.includes('Bonus of') && line.includes('autumn')) {
+                    const bonusMatch = line.match(/Bonus of ([\d.]+) autumn/);
+                    if (bonusMatch) {
+                        transactionData.autumn.bonus += parseFloat(bonusMatch[1]);
+                    }
+                }
+                
+                if (line.includes('Bonus of') && line.includes('winter')) {
+                    const bonusMatch = line.match(/Bonus of ([\d.]+) winter/);
+                    if (bonusMatch) {
+                        transactionData.winter.bonus += parseFloat(bonusMatch[1]);
+                    }
+                }
+                
+                // Daily spend parameter
+                if (line.includes('DCA parameters set') || line.includes('Daily spend')) {
+                    const spendMatch = line.match(/Daily spend=([\d.]+)/);
+                    if (spendMatch) {
+                        transactionData.dailySpend = parseFloat(spendMatch[1]);
+                    }
+                }
+                
+                // Withdrawals (look for significant MATIC decreases not followed by token purchases)
+                // This is a simplified approach - you may need to refine based on actual data patterns
+            });
+            
+            // Sort timeline by timestamp
+            transactionData.timeline.sort((a, b) => a.timestamp - b.timestamp);
+        }
+        
+        function displayStats() {
+            document.getElementById('discordId').textContent = transactionData.discordId || '-';
+            document.getElementById('walletAddress').textContent = transactionData.walletAddress || transactionData.associatedAddress || '-';
+            document.getElementById('totalDeposited').textContent = transactionData.totalDeposited.toFixed(4);
+            document.getElementById('totalSpent').textContent = transactionData.totalSpent.toFixed(4);
+            document.getElementById('totalWithdrawn').textContent = transactionData.totalWithdrawn.toFixed(4);
+            
+            const springTotal = transactionData.spring.bought + transactionData.spring.bonus;
+            const summerTotal = transactionData.summer.bought + transactionData.summer.bonus;
+            const autumnTotal = transactionData.autumn.bought + transactionData.autumn.bonus;
+            const winterTotal = transactionData.winter.bought + transactionData.winter.bonus;
+            
+            document.getElementById('springTotal').textContent = springTotal.toFixed(2);
+            document.getElementById('springBonus').textContent = transactionData.spring.bonus.toFixed(2);
+            
+            document.getElementById('summerTotal').textContent = summerTotal.toFixed(2);
+            document.getElementById('summerBonus').textContent = transactionData.summer.bonus.toFixed(2);
+            
+            document.getElementById('autumnTotal').textContent = autumnTotal.toFixed(2);
+            document.getElementById('autumnBonus').textContent = transactionData.autumn.bonus.toFixed(2);
+            
+            document.getElementById('winterTotal').textContent = winterTotal.toFixed(2);
+            document.getElementById('winterBonus').textContent = transactionData.winter.bonus.toFixed(2);
+            
+            document.getElementById('dailySpend').textContent = transactionData.dailySpend ? transactionData.dailySpend.toFixed(4) : '-';
+        }
+        
+        function createChart() {
+            const ctx = document.getElementById('spendingChart').getContext('2d');
+            
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Tokens Bought'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                }
+            });
+            
+            updateChart();
+        }
+        
+        function updateChart() {
+            if (!chart) return;
+            
+            const datasets = [];
+            
+            const seasons = {
+                spring: { color: '#4ade80', label: 'Spring' },
+                summer: { color: '#fbbf24', label: 'Summer' },
+                autumn: { color: '#fb923c', label: 'Autumn' },
+                winter: { color: '#60a5fa', label: 'Winter' }
+            };
+            
+            const seasonsToShow = currentFilter === 'all' ? Object.keys(seasons) : [currentFilter];
+            
+            seasonsToShow.forEach(season => {
+                const seasonData = transactionData.timeline
+                    .filter(t => t.season === season)
+                    .map(t => ({
+                        x: t.timestamp,
+                        y: t.amount
+                    }));
+                
+                if (seasonData.length > 0) {
+                    datasets.push({
+                        label: seasons[season].label,
+                        data: seasonData,
+                        borderColor: seasons[season].color,
+                        backgroundColor: seasons[season].color + '33',
+                        tension: 0.1,
+                        fill: false
+                    });
+                }
+            });
+            
+            chart.data.datasets = datasets;
+            chart.update();
+        }
+    </script>
+</body>
+</html>
